@@ -1,3 +1,4 @@
+#I'm Smiling to the world.
 export const config = { runtime: "edge" };
 
 const TARGET_BASE = (process.env.TARGET_DOMAIN || "").replace(/\/$/, "");
@@ -60,3 +61,4 @@ export default async function handler(req) {
     return new Response("Bad Gateway: Tunnel Failed", { status: 502 });
   }
 }
+#Nothing is forbidden for me.
