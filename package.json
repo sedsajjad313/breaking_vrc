@@ -2,11 +2,5 @@
   "name": "vercel-xhttp-relay",
   "version": "1.0.0",
   "private": true,
-  "type": "module",
-  "engines": {
-    "node": "20.x"
-  },
-  "scripts": {
-    "build": "echo relay-ready"
-  }
+  "type": "module"
 }
