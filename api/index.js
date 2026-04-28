@@ -1,62 +1,62 @@
-export const config = { runtime: "edge" };
+export const config = { runtime: 'edge' };
 
-const TARGET_BASE = (process.env.TARGET_DOMAIN || "").replace(/\/$/, "");
+const TARGET = (process.env.TARGET_DOMAIN || '').replace(/\/$/, '');
 
-const STRIP_HEADERS = new Set([
-  "host",
-  "connection",
-  "keep-alive",
-  "proxy-authenticate",
-  "proxy-authorization",
-  "te",
-  "trailer",
-  "transfer-encoding",
-  "upgrade",
-  "forwarded",
-  "x-forwarded-host",
-  "x-forwarded-proto",
-  "x-forwarded-port",
+const HOP = new Set([
+  'host',
+  'connection',
+  'keep-alive',
+  'proxy-authenticate',
+  'proxy-authorization',
+  'te',
+  'trailer',
+  'transfer-encoding',
+  'upgrade',
+  'forwarded'
 ]);
 
+function cloneHeaders(headers) {
+  const out = new Headers();
+  for (const [k, v] of headers.entries()) {
+    if (HOP.has(k.toLowerCase())) continue;
+    if (k.toLowerCase().startsWith('x-vercel-')) continue;
+    out.set(k, v);
+  }
+  return out;
+}
+
 export default async function handler(req) {
-  if (!TARGET_BASE) {
-    return new Response("Misconfigured: TARGET_DOMAIN is not set", { status: 500 });
+  if (!TARGET) {
+    return new Response('TARGET_DOMAIN missing', { status: 500 });
   }
 
   try {
-    const pathStart = req.url.indexOf("/", 8);
-    const targetUrl =
-      pathStart === -1 ? TARGET_BASE + "/" : TARGET_BASE + req.url.slice(pathStart);
+    const url = new URL(req.url);
+    const upstream = TARGET + url.pathname + url.search;
 
-    const out = new Headers();
-    let clientIp = null;
-    for (const [k, v] of req.headers) {
-      if (STRIP_HEADERS.has(k)) continue;
-      if (k.startsWith("x-vercel-")) continue;
-      if (k === "x-real-ip") {
-        clientIp = v;
-        continue;
-      }
-      if (k === "x-forwarded-for") {
-        if (!clientIp) clientIp = v;
-        continue;
-      }
-      out.set(k, v);
-    }
-    if (clientIp) out.set("x-forwarded-for", clientIp);
+    const controller = new AbortController();
 
-    const method = req.method;
-    const hasBody = method !== "GET" && method !== "HEAD";
-
-    return await fetch(targetUrl, {
-      method,
-      headers: out,
-      body: hasBody ? req.body : undefined,
-      duplex: "half",
-      redirect: "manual",
+    const resp = await fetch(upstream, {
+      method: req.method,
+      headers: cloneHeaders(req.headers),
+      body: req.method === 'GET' || req.method === 'HEAD' ? undefined : req.body,
+      duplex: 'half',
+      redirect: 'manual',
+      signal: controller.signal
     });
-  } catch (err) {
-    console.error("relay error:", err);
-    return new Response("Bad Gateway: Tunnel Failed", { status: 502 });
+
+    const responseHeaders = new Headers(resp.headers);
+    responseHeaders.set('access-control-allow-origin', '*');
+    responseHeaders.set('cache-control', 'no-store');
+
+    return new Response(resp.body, {
+      status: resp.status,
+      statusText: resp.statusText,
+      headers: responseHeaders
+    });
+
+  } catch (e) {
+    console.error('edge tunnel fail:', e);
+    return new Response('Tunnel Failed', { status: 502 });
   }
 }
